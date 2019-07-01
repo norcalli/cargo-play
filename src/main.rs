@@ -152,10 +152,14 @@ fn main() -> Result<(), CargoPlayError> {
     let opt = opt.unwrap();
 
     let src_hash = opt.src_hash();
-    let temp = temp_dir(opt.temp_dirname());
+    let build_dir = if let Some(ref cache_dir) = opt.cache_dir {
+        cache_dir.join(opt.temp_dirname())
+    } else {
+        temp_dir(opt.temp_dirname())
+    };
 
-    if opt.cached && temp.exists() {
-        let mut bin_path = temp.join("target");
+    if opt.cached && build_dir.exists() {
+        let mut bin_path = build_dir.join("target");
         if opt.release {
             bin_path.push("release");
         } else {
@@ -179,13 +183,13 @@ fn main() -> Result<(), CargoPlayError> {
     let dependencies = extract_headers(&files);
 
     if opt.clean {
-        rmtemp(&temp)?;
+        rmtemp(&build_dir)?;
     }
-    mktemp(&temp);
-    write_cargo_toml(&temp, src_hash.clone(), dependencies, opt.edition)?;
-    copy_sources(&temp, &opt.src)?;
+    mktemp(&build_dir);
+    write_cargo_toml(&build_dir, src_hash.clone(), dependencies, opt.edition)?;
+    copy_sources(&build_dir, &opt.src)?;
 
-    match run_cargo_build(opt.toolchain, &temp, opt.release)?.code() {
+    match run_cargo_build(opt.toolchain, &build_dir, opt.release)?.code() {
         Some(code) => std::process::exit(code),
         None => std::process::exit(-1),
     }

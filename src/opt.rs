@@ -51,6 +51,12 @@ pub(crate) struct Opt {
     )]
     pub src: Vec<PathBuf>,
     #[structopt(
+        long = "cache_dir",
+        parse(try_from_os_str = "osstr_to_abspath"),
+        raw(validator = "dir_exist")
+    )]
+    pub cache_dir: Option<PathBuf>,
+    #[structopt(
         short = "e",
         long = "edition",
         default_value = "2018",
@@ -124,6 +130,16 @@ fn osstr_to_abspath(v: &OsStr) -> Result<PathBuf, OsString> {
 fn file_exist(v: String) -> Result<(), String> {
     let p = PathBuf::from(v);
     if !p.is_file() {
+        Err(format!("input file does not exist: {:?}", p))
+    } else {
+        Ok(())
+    }
+}
+
+/// structopt compataible function to check whether a directory exists
+fn dir_exist(v: String) -> Result<(), String> {
+    let p = PathBuf::from(v);
+    if !p.is_dir() {
         Err(format!("input file does not exist: {:?}", p))
     } else {
         Ok(())
