@@ -37,6 +37,8 @@ impl Into<String> for RustEdition {
 }
 
 #[derive(Debug, StructOpt)]
+#[structopt(raw(setting = "structopt::clap::AppSettings::TrailingVarArg"))]
+#[structopt(raw(setting = "structopt::clap::AppSettings::AllowLeadingHyphen"))]
 #[structopt(name = "cargo-play", about = "Single file cargo runner.")]
 pub(crate) struct Opt {
     #[structopt(short = "d", long = "debug", hidden = true)]
@@ -51,7 +53,7 @@ pub(crate) struct Opt {
     )]
     pub src: Vec<PathBuf>,
     #[structopt(
-        long = "cache_dir",
+        long,
         parse(try_from_os_str = "osstr_to_abspath"),
         raw(validator = "dir_exist")
     )]
@@ -63,11 +65,11 @@ pub(crate) struct Opt {
         raw(possible_values = r#"&["2015", "2018"]"#)
     )]
     pub edition: RustEdition,
-    #[structopt(long = "release")]
+    #[structopt(long)]
     pub release: bool,
-    #[structopt(long = "cached")]
+    #[structopt(long)]
     pub cached: bool,
-    #[structopt(short = "a", long = "arg", multiple = true)]
+    #[structopt(long, short)]
     pub args: Vec<String>,
 }
 
@@ -108,12 +110,18 @@ impl Opt {
             args.next();
         }
 
-        let toolchain = args
-            .clone()
-            .find(|x| x.starts_with("+"))
+        let (toolchains, args): (Vec<String>, Vec<String>) = args.partition(|x| x.starts_with("+"));
+
+        let toolchain = toolchains
+            .last()
             .map(|s| String::from_iter(s.chars().skip(1)));
 
-        Ok(Opt::from_iter(args.filter(|x| !x.starts_with("+"))).with_toolchain(toolchain))
+        let mut groups = args.splitn(2, |x| x == "--");
+        let mut opt = Opt::from_iter(groups.next().unwrap()).with_toolchain(toolchain);
+        if let Some(group) = groups.next() {
+            opt.args.extend(group.iter().cloned());
+        }
+        Ok(opt)
     }
 }
 
