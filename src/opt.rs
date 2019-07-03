@@ -7,7 +7,7 @@ use structopt::StructOpt;
 
 use crate::errors::CargoPlayError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum RustEdition {
     E2015,
     E2018,
@@ -17,12 +17,10 @@ impl FromStr for RustEdition {
     type Err = CargoPlayError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == "2018" {
-            Ok(RustEdition::E2018)
-        } else if s == "2015" {
-            Ok(RustEdition::E2015)
-        } else {
-            Err(CargoPlayError::InvalidEdition(s.into()))
+        match s {
+            "2018" => Ok(RustEdition::E2018),
+            "2015" => Ok(RustEdition::E2015),
+            _ => Err(CargoPlayError::InvalidEdition(s.into())),
         }
     }
 }
@@ -48,11 +46,6 @@ pub(crate) struct Opt {
     #[structopt(short = "t", long = "toolchain", hidden = true)]
     pub toolchain: Option<String>,
     #[structopt(
-        parse(try_from_os_str = "osstr_to_abspath"),
-        raw(required = "true", validator = "file_exist")
-    )]
-    pub src: Vec<PathBuf>,
-    #[structopt(
         long,
         parse(try_from_os_str = "osstr_to_abspath"),
         raw(validator = "dir_exist")
@@ -69,7 +62,11 @@ pub(crate) struct Opt {
     pub release: bool,
     #[structopt(long)]
     pub cached: bool,
-    #[structopt(long, short)]
+    #[structopt(
+        parse(try_from_os_str = "osstr_to_abspath"),
+        raw(required = "true", validator = "file_exist")
+    )]
+    pub src: PathBuf,
     pub args: Vec<String>,
 }
 
@@ -77,13 +74,8 @@ impl Opt {
     /// Generate a string of hash based on the path passed in
     pub fn src_hash(&self) -> String {
         let mut hash = sha1::Sha1::new();
-        let mut srcs = self.src.clone();
 
-        srcs.sort();
-
-        for file in srcs.into_iter() {
-            hash.update(file.to_string_lossy().as_bytes());
-        }
+        hash.update(self.src.to_string_lossy().as_bytes());
 
         base64::encode_config(&hash.digest().bytes()[..], base64::URL_SAFE_NO_PAD)
     }

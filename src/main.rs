@@ -69,9 +69,9 @@ fn write_cargo_toml(
     dir: &PathBuf,
     name: String,
     dependencies: Vec<String>,
-    edition: RustEdition,
+    opt: &Opt,
 ) -> Result<(), CargoPlayError> {
-    let manifest = CargoManifest::new(name, dependencies, edition)?;
+    let manifest = CargoManifest::new(name, dependencies, opt.edition)?;
     let mut cargo = File::create(dir.join("Cargo.toml"))?;
 
     cargo.write_all(&toml::to_vec(&manifest).map_err(CargoPlayError::from_serde)?)?;
@@ -116,14 +116,10 @@ fn copy_sources(temp: &PathBuf, sources: &Vec<PathBuf>) -> Result<(), CargoPlayE
     Ok(())
 }
 
-fn run_cargo_build(
-    toolchain: Option<String>,
-    project: &PathBuf,
-    release: bool,
-) -> Result<ExitStatus, CargoPlayError> {
+fn run_cargo_build(opt: &Opt, project: &PathBuf) -> Result<ExitStatus, CargoPlayError> {
     let mut cargo = Command::new("cargo");
 
-    if let Some(toolchain) = toolchain {
+    if let Some(ref toolchain) = opt.toolchain {
         cargo.arg(format!("+{}", toolchain));
     }
 
@@ -132,8 +128,13 @@ fn run_cargo_build(
         .arg("--manifest-path")
         .arg(project.join("Cargo.toml"));
 
-    if release {
+    if opt.release {
         cargo.arg("--release");
+    }
+
+    if !opt.args.is_empty() {
+        cargo.arg("--");
+        cargo.args(opt.args.iter());
     }
 
     cargo
@@ -179,17 +180,19 @@ fn main() -> Result<(), CargoPlayError> {
         }
     }
 
-    let files = parse_inputs(&opt.src)?;
+    let sources = vec![opt.src.clone()];
+
+    let files = parse_inputs(&sources)?;
     let dependencies = extract_headers(&files);
 
     if opt.clean {
         rmtemp(&build_dir)?;
     }
     mktemp(&build_dir);
-    write_cargo_toml(&build_dir, src_hash.clone(), dependencies, opt.edition)?;
-    copy_sources(&build_dir, &opt.src)?;
+    write_cargo_toml(&build_dir, src_hash.clone(), dependencies, &opt)?;
+    copy_sources(&build_dir, &sources)?;
 
-    match run_cargo_build(opt.toolchain, &build_dir, opt.release)?.code() {
+    match run_cargo_build(&opt, &build_dir)?.code() {
         Some(code) => std::process::exit(code),
         None => std::process::exit(-1),
     }
