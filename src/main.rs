@@ -16,9 +16,9 @@ use crate::cargo::CargoManifest;
 use crate::errors::CargoPlayError;
 use crate::opt::{Opt, RustEdition};
 
-fn parse_inputs(inputs: &Vec<PathBuf>) -> Result<Vec<String>, CargoPlayError> {
+fn parse_inputs(inputs: &[PathBuf]) -> Result<Vec<String>, CargoPlayError> {
     inputs
-        .into_iter()
+        .iter()
         .map(File::open)
         .map(|res| match res {
             Ok(mut fp) => {
@@ -31,7 +31,7 @@ fn parse_inputs(inputs: &Vec<PathBuf>) -> Result<Vec<String>, CargoPlayError> {
         .collect()
 }
 
-fn extract_headers(files: &Vec<String>) -> Vec<String> {
+fn extract_headers(files: &[String]) -> Vec<String> {
     files
         .iter()
         .map(|file: &String| -> Vec<String> {
@@ -60,7 +60,7 @@ fn rmtemp(temp: &PathBuf) -> Result<(), CargoPlayError> {
 
 fn mktemp(temp: &PathBuf) {
     debug!("Creating temporary building folder at: {:?}", temp);
-    if let Err(_) = std::fs::create_dir(temp) {
+    if std::fs::create_dir(temp).is_err() {
         debug!("Temporary directory already exists.");
     }
 }
@@ -81,7 +81,7 @@ fn write_cargo_toml(
 
 /// Copy all the passed in sources to the temporary directory. The first in the list will be
 /// treated as main.rs.
-fn copy_sources(temp: &PathBuf, sources: &Vec<PathBuf>) -> Result<(), CargoPlayError> {
+fn copy_sources(temp: &PathBuf, sources: &[PathBuf]) -> Result<(), CargoPlayError> {
     let destination = temp.join("src");
     std::fs::create_dir_all(&destination)?;
 
@@ -98,8 +98,8 @@ fn copy_sources(temp: &PathBuf, sources: &Vec<PathBuf>) -> Result<(), CargoPlayE
     if let Some(base) = base {
         files
             .map(|file| -> Result<(), CargoPlayError> {
-                let part =
-                    diff_paths(file, base).ok_or(CargoPlayError::DiffPathError(file.to_owned()))?;
+                let part = diff_paths(file, base)
+                    .ok_or_else(|| CargoPlayError::DiffPathError(file.to_owned()))?;
                 let dst = destination.join(part);
 
                 // ensure the parent folder all exists
@@ -189,7 +189,7 @@ fn main() -> Result<(), CargoPlayError> {
         rmtemp(&build_dir)?;
     }
     mktemp(&build_dir);
-    write_cargo_toml(&build_dir, src_hash.clone(), dependencies, &opt)?;
+    write_cargo_toml(&build_dir, src_hash, dependencies, &opt)?;
     copy_sources(&build_dir, &sources)?;
 
     match run_cargo_build(&opt, &build_dir)?.code() {
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_extract_headers() {
-        let inputs = vec![
+        let inputs: Vec<String> = vec![
             r#"//# line 1
 //# line 2
 // line 3
@@ -213,7 +213,7 @@ mod tests {
         .into_iter()
         .map(Into::into)
         .collect();
-        let result = dbg!(extract_headers(&inputs));
+        let result = dbg!(extract_headers(&inputs[..]));
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], String::from("line 1"));

@@ -1,5 +1,4 @@
 use serde::Serialize;
-use toml::value::Table;
 
 use crate::errors::CargoPlayError;
 use crate::opt::RustEdition;
@@ -24,7 +23,8 @@ impl CargoPackage {
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct CargoManifest {
     package: CargoPackage,
-    dependencies: Table,
+    #[serde(flatten)]
+    dependencies: toml::value::Table,
 }
 
 impl CargoManifest {
@@ -33,22 +33,11 @@ impl CargoManifest {
         dependencies: Vec<String>,
         edition: RustEdition,
     ) -> Result<Self, CargoPlayError> {
-        let dependencies = dependencies
-            .into_iter()
-            .map(|dependency| dependency.parse::<toml::Value>())
-            .collect::<Result<Vec<toml::Value>, _>>()
+        let dependencies: toml::Value = format!("[dependencies]\n{}", dependencies.join("\n"))
+            .parse()
             .map_err(CargoPlayError::from_serde)?;
 
-        if dependencies.iter().any(|d| !d.is_table()) {
-            return Err(CargoPlayError::ParseError("format error!".into()));
-        }
-
-        let dependencies: Table = dependencies
-            .into_iter()
-            .map(|d| d.try_into::<Table>().unwrap().into_iter())
-            .flatten()
-            .collect();
-
+        let dependencies = dependencies.try_into().unwrap();
         Ok(Self {
             package: CargoPackage::new(name, edition),
             dependencies,
