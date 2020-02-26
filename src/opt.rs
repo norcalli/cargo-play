@@ -63,7 +63,7 @@ pub(crate) struct Opt {
     #[structopt(long)]
     pub cached: bool,
     #[structopt(
-        parse(try_from_os_str = "osstr_to_abspath"),
+        // parse(try_from_os_str = "osstr_to_abspath"),
         raw(required = "true", validator = "file_exist")
     )]
     pub src: PathBuf,
@@ -75,7 +75,7 @@ impl Opt {
     pub fn src_hash(&self) -> String {
         let mut hash = sha1::Sha1::new();
 
-        hash.update(self.src.to_string_lossy().as_bytes());
+        hash.update(self.src.canonicalize().unwrap().to_string_lossy().as_bytes());
 
         base64::encode_config(&hash.digest().bytes()[..], base64::URL_SAFE_NO_PAD)
     }

@@ -1,3 +1,4 @@
+#![feature(process_set_argv0)]
 mod cargo;
 mod errors;
 mod opt;
@@ -8,6 +9,7 @@ use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::iter::Iterator;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 use std::vec::Vec;
@@ -124,7 +126,7 @@ fn run_cargo_build(opt: &Opt, project: &PathBuf) -> Result<ExitStatus, CargoPlay
     }
 
     let cargo = cargo
-        .arg("run")
+        .arg("build")
         .arg("--manifest-path")
         .arg(project.join("Cargo.toml"));
 
@@ -144,11 +146,21 @@ fn run_cargo_build(opt: &Opt, project: &PathBuf) -> Result<ExitStatus, CargoPlay
         .map_err(From::from)
 }
 
-fn main() -> Result<(), CargoPlayError> {
+fn run_bin(bin_path: PathBuf, opt: Opt) -> Result<ExitStatus, CargoPlayError> {
+    return Command::new(bin_path)
+        .args(opt.args)
+        .arg0(opt.src)
+        .stderr(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .status()
+        .map_err(CargoPlayError::from);
+}
+
+fn main1() -> Result<i32, CargoPlayError> {
     let args = std::env::args().collect::<Vec<_>>();
     let opt = Opt::parse(args);
     if opt.is_err() {
-        return Ok(());
+        return Ok(0);
     }
     let opt = opt.unwrap();
 
@@ -159,24 +171,18 @@ fn main() -> Result<(), CargoPlayError> {
         temp_dir(opt.temp_dirname())
     };
 
+    let mut bin_path = build_dir.join("target");
+    if opt.release {
+        bin_path.push("release");
+    } else {
+        bin_path.push("debug");
+    }
+    // TODO reuse logic to formulate package name, i.e. to_lowercase
+    bin_path.push(&src_hash.to_lowercase());
+
     if opt.cached && build_dir.exists() {
-        let mut bin_path = build_dir.join("target");
-        if opt.release {
-            bin_path.push("release");
-        } else {
-            bin_path.push("debug");
-        }
-        // TODO reuse logic to formulate package name, i.e. to_lowercase
-        bin_path.push(&src_hash.to_lowercase());
         if bin_path.exists() {
-            let mut cmd = Command::new(bin_path);
-            return cmd
-                .args(opt.args)
-                .stderr(Stdio::inherit())
-                .stdout(Stdio::inherit())
-                .status()
-                .map(|_| ())
-                .map_err(CargoPlayError::from);
+            return Ok(run_bin(bin_path, opt)?.code().unwrap_or(-1));
         }
     }
 
@@ -192,10 +198,15 @@ fn main() -> Result<(), CargoPlayError> {
     write_cargo_toml(&build_dir, src_hash, dependencies, &opt)?;
     copy_sources(&build_dir, &sources)?;
 
-    match run_cargo_build(&opt, &build_dir)?.code() {
-        Some(code) => std::process::exit(code),
-        None => std::process::exit(-1),
-    }
+    Ok(match run_cargo_build(&opt, &build_dir)?.code() {
+        Some(code) if code == 0 => run_bin(bin_path, opt)?.code().unwrap_or(-1),
+        Some(code) => code,
+        None => 1,
+    })
+}
+
+fn main() {
+    std::process::exit(main1().unwrap())
 }
 
 #[cfg(test)]
